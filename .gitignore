@@ -142,3 +142,5 @@ leapmotion_example.py
 leapmotion_output.csv
 polhemus_output.csv
 *.csv
+leapc-python-bindings-main/*
+*.mov

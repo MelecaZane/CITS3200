@@ -242,6 +242,7 @@ def open_file_picker():
 def start_stopwatch():
     global STARTED
     global counter
+    global minutes
     if STARTED:
         elapsed_time = time.time() - start_time
         milliseconds = int((elapsed_time * 1000) % 1000)
@@ -313,33 +314,8 @@ def start_timed_recording():
     Starts the recording for a user-specified time duration (in minutes).
     After the specified time, it will automatically stop the recording.
     '''
-    try:
-        # Get the duration entered by the user
-        minutes = int(duration_field.get())
-        if minutes <= 0:
-            raise ValueError("Duration must be a positive integer")
-    except ValueError:
-        # Show an error message if the input is invalid
-        messagebox.showerror("Invalid Duration", "Please enter a valid positive integer for the recording duration.")
-        return
-
-    # Convert minutes to milliseconds for the `window.after()` function
-    duration_ms = minutes * 60 * 1000
-
-    # Start the trackers and camera recording
     start_button_wrapper()
-
-    # Schedule the stop after the specified duration
-    window.after(duration_ms, stop_timed_recording)
-
-def stop_timed_recording():
-    '''
-    Automatically stops the recording after the preset time duration.
-    '''
-    # Stop all trackers and camera recording
-    stop_button_wrapper()
-
-
+    window.after(100, check_stopwatch)
 
 # Add a label and entry field for the user to specify the recording duration (in minutes)
 label_duration = tk.Label(window, text="Recording Duration (mins):")
@@ -352,12 +328,11 @@ duration_field.grid(row=5, column=1)
 timed_button = tk.Button(window, text="Start Timed Recording", command=start_timed_recording)
 timed_button.grid(row=5, column=3, sticky="ew")
 
-
-
-
-
-
-
+def check_stopwatch():
+    if minutes >= int(duration_field.get()):
+        stop_button_wrapper()
+        return
+    window.after(100, check_stopwatch)
 
 # Start the main event loop
 if __name__ == "__main__":
