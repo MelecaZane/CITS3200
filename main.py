@@ -190,6 +190,8 @@ def begin_tracking():
         messagebox.showerror("Polling rate error", "Please enter a valid integer for the polling rate.")
         return
     else:
+        current_process = psutil.Process(os.getpid())
+        current_process.nice(psutil.HIGH_PRIORITY_CLASS)  # Set the process to high priority
         # Check a valid mode is selected for leapmotion
         if LEAPMOTION.get() and (leapmotion_mode.get() not in ["Desktop", "Head Mounted", "Screentop"]):
             raise ValueError("Please select a valid mode for Leapmotion.")

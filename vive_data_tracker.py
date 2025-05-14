@@ -42,94 +42,42 @@ def get_device_name_type_and_serial(device_index):
 def get_tracker_data():
     """
     Retrieves tracking data (pose) for all connected devices and categorizes them by type.
-    
-    :return: A dictionary containing device data categorized by type and the data completion rate.
     """
-    # Array to hold pose data for up to the maximum number of devices
     poses = (openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount)()
-    
-    # Get the absolute pose (position and orientation) of each tracked device
     openvr.VRSystem().getDeviceToAbsoluteTrackingPose(openvr.TrackingUniverseStanding, 0, poses)
 
-    # Dictionary to categorize devices by type (e.g., Headset, Controller, etc.)
     device_data = {"Headset": [], "Controller": [], "Tracker": [], "Unknown": []}
-    
-    # Track the total number of devices and those with valid pose data
-    total_devices = 0
-    successful_reads = 0
-
-    # Loop through all devices and collect their pose data
-    for i in range(len(poses)):
-        total_devices += 1
-        if poses[i].bPoseIsValid:  # Check if the pose is valid (i.e., usable tracking data)
-            successful_reads += 1
+    for i, pose in enumerate(poses):
+        if pose.bPoseIsValid:
+            timestamp = time.time()  # Capture timestamp at the time of recording
             device_name, device_type, device_serial = get_device_name_type_and_serial(i)
-            
-            # Get the device's transformation matrix (pose) for its position/orientation
-            tracker_pose = poses[i].mDeviceToAbsoluteTracking
-            # Flatten the 3x4 matrix into a single list
+            tracker_pose = pose.mDeviceToAbsoluteTracking
             flat_pose = [item for row in tracker_pose for item in row]
-            
-            # Store the device's data in the corresponding category
-            device_data[device_type].append([i, device_name, device_serial] + flat_pose)
-        else:
-            # Notify if a device has invalid pose data
-            print(f"Warning: Device {i} has invalid pose.")
+            device_data[device_type].append([timestamp, i, device_name, device_serial] + flat_pose)
 
-    # Calculate the percentage of devices with valid data
-    completion_rate = (successful_reads / total_devices) * 100
-    print(f"Data completion rate: {completion_rate:.2f}%")
-    
-    return device_data, completion_rate
+    return device_data
 
-def write_data_to_files(device_data, export_format="csv"):
+def write_data_to_files(data_buffer, export_format="csv"):
     """
-    Writes the tracking data to files (CSV, XLSX, TXT, or MAT format) for each device.
-    
-    :param device_data: Dictionary containing tracking data for each device type.
-    :param export_format: The format in which to save the data ("csv", "xlsx", "txt", or "mat").
+    Writes the tracking data from the buffer to files in batches (default: CSV format).
     """
-    # Loop through each type of device (Headset, Controller, Tracker, Unknown)
-    for device_type, devices in device_data.items():
-        # Loop through each device's data
+    if export_format != "csv":
+        raise ValueError("Only CSV format is supported in this optimized version.")
+
+    for device_type, devices in data_buffer.items():
         for device in devices:
-            device_id, device_name, device_serial, *pose_data = device
-            # Create the file name based on device type and serial number
-            file_name = f"{device_type.lower()}_{device_serial}_data.{export_format}"
-            # Keep track of the file being created
-            files.add(file_name)
+            timestamp, device_id, device_name, device_serial, *pose_data = device
+            file_name = f"{device_type.lower()}_{device_serial}_data.csv"
 
-            try:
-                # Write data in the chosen format
-                if export_format == "csv":
-                    # Write to a CSV file (append mode)
-                    with open(file_name, mode="a", newline="") as csv_file:
-                        csv_writer = csv.writer(csv_file)
-                        # If file is empty, write the header
-                        if os.path.getsize(file_name) == 0:
-                            header = ["Timestamp", "Device ID", "Device Name", "Device Serial", "M00", "M01", "M02", "M03", 
-                                      "M10", "M11", "M12", "M13", "M20", "M21", "M22", "M23"]
-                            csv_writer.writerow(header)
-                        # Write the device data along with a timestamp
-                        csv_writer.writerow([time.time()] + [device_id, device_name, device_serial] + pose_data)
-                elif export_format == "xlsx":
-                    # Write data to an Excel file
-                    df = pd.DataFrame([device], columns=["Device ID", "Device Name", "Device Serial", 
-                                                         "M00", "M01", "M02", "M03", "M10", "M11", "M12", "M13",
-                                                         "M20", "M21", "M22", "M23"])
-                    df.to_excel(file_name, index=False)
-                elif export_format == "txt":
-                    # Write data to a text file
-                    with open(file_name, mode="a") as txt_file:
-                        txt_file.write(str(device) + "\n")
-                elif export_format == "mat":
-                    # Write data to a .mat file (MATLAB format)
-                    sio.savemat(file_name, {f"{device_type.lower()}_{device_serial}": device})
-                else:
-                    raise ValueError(f"Unsupported export format: {export_format}")
-            except Exception as e:
-                # Print any errors that occur during file writing
-                print(f"Error writing to file {file_name}: {e}")
+            with open(file_name, mode="a", newline="") as csv_file:
+                csv_writer = csv.writer(csv_file)
+                if csv_file.tell() == 0:  # If file is empty, write the header
+                    header = ["Timestamp", "Device ID", "Device Name", "Device Serial", "M00", "M01", "M02", "M03",
+                              "M10", "M11", "M12", "M13", "M20", "M21", "M22", "M23"]
+                    csv_writer.writerow(header)
+
+                # Write the data along with the pre-captured timestamp
+                csv_writer.writerow([timestamp] + [device_id, device_name, device_serial] + pose_data)
 
 def record_for_preset_time(duration_seconds, hz, export_format="csv"):
     """
@@ -148,16 +96,33 @@ def record_for_preset_time(duration_seconds, hz, export_format="csv"):
 
 def record_indefinitely(hz, export_format="csv"):
     """
-    Records device tracking data indefinitely (until manually interrupted).
+    Optimized recording function with dynamic batch size based on polling frequency.
     
-    :param hz: The frequency of data collection (in Hz, i.e., number of recordings per second).
-    :param export_format: The format in which to save the data (default is "csv").
+    :param hz: Polling frequency in Hz (samples per second).
+    :param export_format: Format to export the data (default: "csv").
     """
+    batch_size = max(1, hz)  # Set dynamic batch size to match the polling frequency
+    data_buffer = {"Headset": [], "Controller": [], "Tracker": [], "Unknown": []}
+    
+    print(f"Starting recording with polling frequency: {hz} Hz and batch size: {batch_size}")
+    
     while another:  # Continue recording until 'another' is set to False
-        device_data, completion_rate = get_tracker_data()  # Get tracking data
-        write_data_to_files(device_data, export_format)  # Save the data
-        time.sleep(1/hz)  # Wait for the next data collection (based on the frequency)
+        start_time = time.time()
+        device_data = get_tracker_data()  # Get tracking data
 
+        # Add data to buffer
+        for key, value in device_data.items():
+            data_buffer[key].extend(value)
+
+        # Write to file if buffer size is reached
+        if sum(len(v) for v in data_buffer.values()) >= batch_size:
+            write_data_to_files(data_buffer, export_format)
+            data_buffer = {"Headset": [], "Controller": [], "Tracker": [], "Unknown": []}  # Clear buffer
+
+        # Ensure loop adheres to specified frequency
+        elapsed = time.time() - start_time
+        time.sleep(max(0, 1/hz - elapsed))
+        
 def map_device_id_to_physical_tracker():
     """
     Maps each device ID to a physical tracker (Headset, Controller, Tracker) and prints the mapping.
