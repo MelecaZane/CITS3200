@@ -213,14 +213,15 @@ def begin_tracking():
                 try:
                     vive.openvr.init(vive.openvr.VRApplication_Scene)
                     vive.another = True
-                    vive_thread = threading.Thread(target=vive.start_vive, daemon=True, args=(hz,))
+                    vive_thread = threading.Thread(target=vive.record_indefinitely, daemon=True, args=(hz,))
                     vive_thread.start()
                 # Since VR is the last to be initialised, sending the stop button signal if failed will stop all other threads too
-                except:
+                except Exception as e:
                     stop_output()
                     stop_button_wrapper()
-                    messagebox.showerror("Could not initialize OpenVR", "Please ensure SteamVR is running and a headset is connected.", parent=window)
-                    print("Error: Could not initialize OpenVR. Please ensure SteamVR is running and a headset is connected.")
+                    error_message = f"Error: Could not initialise OpenVR. Please ensure SteamVR is running and a headset is connected. Details: {str(e)}"
+                    messagebox.showerror("Could not initialize OpenVR", error_message, parent=window)
+                    print(error_message)
 
         else:
             print("Already started.")
