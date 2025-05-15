@@ -90,9 +90,11 @@ def record_for_preset_time(duration_seconds, hz, export_format="csv"):
     """
     start_time = time.time()  # Start timer
     while time.time() - start_time < duration_seconds:  # Loop until the preset duration is reached
-        device_data, completion_rate = get_tracker_data()  # Get tracking data
+        poll_start_time = time.time()  # Start polling time
+        device_data = get_tracker_data()  # Get tracking data
         write_data_to_files(device_data, export_format)  # Save the data
-        time.sleep(1/hz)  # Wait for the next data collection (based on the frequency)
+        elapsed = time.time() - poll_start_time
+        time.sleep(max(0, 1/hz - elapsed))  # Wait for the next data collection (based on the frequency)
     print("Recording completed.")
 
 def record_indefinitely(hz, export_format="csv"):
