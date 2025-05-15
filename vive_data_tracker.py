@@ -4,6 +4,7 @@ import csv  # For reading/writing CSV files
 import os  # OS-level operations (e.g., checking file size)
 import pandas as pd  # For working with data in DataFrames (used for xlsx output)
 import scipy.io as sio  # For saving data in MATLAB's .mat format
+import math
 
 # Boolean variable to control indefinite recording loop
 another = True
@@ -69,6 +70,7 @@ def write_data_to_files(data_buffer, export_format="csv"):
         for device in devices:
             timestamp, device_id, device_name, device_serial, *pose_data = device
             file_name = f"{device_type.lower()}_{device_serial}_data.csv"
+            files.add(file_name)  # Track created files
 
             with open(file_name, mode="a", newline="") as csv_file:
                 csv_writer = csv.writer(csv_file)
@@ -104,7 +106,10 @@ def record_indefinitely(hz, export_format="csv"):
     :param hz: Polling frequency in Hz (samples per second).
     :param export_format: Format to export the data (default: "csv").
     """
-    batch_size = max(1, hz)  # Set dynamic batch size to match the polling frequency
+    if hz <= 100:
+        batch_size = 10
+    else:
+        batch_size = math.floor(hz / 10)
     data_buffer = {"Headset": [], "Controller": [], "Tracker": [], "Unknown": []}
     
     print(f"Starting recording with polling frequency: {hz} Hz and batch size: {batch_size}")
@@ -125,6 +130,7 @@ def record_indefinitely(hz, export_format="csv"):
         # Ensure loop adheres to specified frequency
         elapsed = time.time() - start_time
         time.sleep(max(0, 1/hz - elapsed))
+    write_data_to_files(data_buffer, export_format)  # Write any remaining data in the buffer
         
 def map_device_id_to_physical_tracker():
     """
