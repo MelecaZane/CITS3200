@@ -51,9 +51,10 @@ def get_tracker_data():
         if pose.bPoseIsValid:
             timestamp = time.time()  # Capture timestamp at the time of recording
             device_name, device_type, device_serial = get_device_name_type_and_serial(i)
-            tracker_pose = pose.mDeviceToAbsoluteTracking
-            flat_pose = [item for row in tracker_pose for item in row]
-            device_data[device_type].append([timestamp, i, device_name, device_serial] + flat_pose)
+            if not str(device_serial).startswith("LHB-"):
+                tracker_pose = pose.mDeviceToAbsoluteTracking
+                flat_pose = [item for row in tracker_pose for item in row]
+                device_data[device_type].append([timestamp, i, device_name, device_serial] + flat_pose)
 
     return device_data
 
