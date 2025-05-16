@@ -56,7 +56,7 @@ class MyListener(leap.Listener):
         return len(self.hands) > 0
 
 
-def initialise_leapmotion(hz: int):
+def initialise_leapmotion(hz: int, first_collection_callback=None):
     hand_data = {}
     # Each hand has these digits, each digit having each of thes bones
     digits = ["thumb", "index", "middle", "ring", "pinky"]
@@ -68,6 +68,7 @@ def initialise_leapmotion(hz: int):
     connection.add_listener(my_listener)
 
     running = True
+    first_collection = False
     #217 columns
     headers = "Timestamp,LeftPalmX,LeftPalmY,LeftPalmZ,LeftThumbMetacarpalWidth,LeftThumbMetacarpalX,LeftThumbMetacarpalY,LeftThumbMetacarpalZ,LeftThumbMetacarpalW,LeftThumbProximalWidth,LeftThumbProximalX,LeftThumbProximalY,LeftThumbProximalZ,LeftThumbProximalW,LeftThumbIntermediateWidth,LeftThumbIntermediateX,LeftThumbIntermediateY,LeftThumbIntermediateZ,LeftThumbIntermediateW,LeftThumbDistalWidth,LeftThumbDistalX,LeftThumbDistalY,LeftThumbDistalZ,LeftThumbDistalW,LeftIndexMetacarpalWidth,LeftIndexMetacarpalX,LeftIndexMetacarpalY,LeftIndexMetacarpalZ,LeftIndexMetacarpalW,LeftIndexProximalWidth,LeftIndexProximalX,LeftIndexProximalY,LeftIndexProximalZ,LeftIndexProximalW,LeftIndexIntermediateWidth,LeftIndexIntermediateX,LeftIndexIntermediateY,LeftIndexIntermediateZ,LeftIndexIntermediateW,LeftIndexDistalWidth,LeftIndexDistalX,LeftIndexDistalY,LeftIndexDistalZ,LeftIndexDistalW,LeftMiddleMetacarpalWidth,LeftMiddleMetacarpalX,LeftMiddleMetacarpalY,LeftMiddleMetacarpalZ,LeftMiddleMetacarpalW,LeftMiddleProximalWidth,LeftMiddleProximalX,LeftMiddleProximalY,LeftMiddleProximalZ,LeftMiddleProximalW,LeftMiddleIntermediateWidth,LeftMiddleIntermediateX,LeftMiddleIntermediateY,LeftMiddleIntermediateZ,LeftMiddleIntermediateW,LeftMiddleDistalWidth,LeftMiddleDistalX,LeftMiddleDistalY,LeftMiddleDistalZ,LeftMiddleDistalW,LeftRingMetacarpalWidth,LeftRingMetacarpalX,LeftRingMetacarpalY,LeftRingMetacarpalZ,LeftRingMetacarpalW,LeftRingProximalWidth,LeftRingProximalX,LeftRingProximalY,LeftRingProximalZ,LeftRingProximalW,LeftRingIntermediateWidth,LeftRingIntermediateX,LeftRingIntermediateY,LeftRingIntermediateZ,LeftRingIntermediateW,LeftRingDistalWidth,LeftRingDistalX,LeftRingDistalY,LeftRingDistalZ,LeftRingDistalW,LeftPinkyMetacarpalWidth,LeftPinkyMetacarpalX,LeftPinkyMetacarpalY,LeftPinkyMetacarpalZ,LeftPinkyMetacarpalW,LeftPinkyProximalWidth,LeftPinkyProximalX,LeftPinkyProximalY,LeftPinkyProximalZ,LeftPinkyProximalW,LeftPinkyIntermediateWidth,LeftPinkyIntermediateX,LeftPinkyIntermediateY,LeftPinkyIntermediateZ,LeftPinkyIntermediateW,LeftPinkyDistalWidth,LeftPinkyDistalX,LeftPinkyDistalY,LeftPinkyDistalZ,LeftPinkyDistalW,LeftArmWidth,LeftArmX,LeftArmY,LeftArmZ,LeftArmW,RightPalmX,RightPalmY,RightPalmZ,RightThumbMetacarpalWidth,RightThumbMetacarpalX,RightThumbMetacarpalY,RightThumbMetacarpalZ,RightThumbMetacarpalW,RightThumbProximalWidth,RightThumbProximalX,RightThumbProximalY,RightThumbProximalZ,RightThumbProximalW,RightThumbIntermediateWidth,RightThumbIntermediateX,RightThumbIntermediateY,RightThumbIntermediateZ,RightThumbIntermediateW,RightThumbDistalWidth,RightThumbDistalX,RightThumbDistalY,RightThumbDistalZ,RightThumbDistalW,RightIndexMetacarpalWidth,RightIndexMetacarpalX,RightIndexMetacarpalY,RightIndexMetacarpalZ,RightIndexMetacarpalW,RightIndexProximalWidth,RightIndexProximalX,RightIndexProximalY,RightIndexProximalZ,RightIndexProximalW,RightIndexIntermediateWidth,RightIndexIntermediateX,RightIndexIntermediateY,RightIndexIntermediateZ,RightIndexIntermediateW,RightIndexDistalWidth,RightIndexDistalX,RightIndexDistalY,RightIndexDistalZ,RightIndexDistalW,RightMiddleMetacarpalWidth,RightMiddleMetacarpalX,RightMiddleMetacarpalY,RightMiddleMetacarpalZ,RightMiddleMetacarpalW,RightMiddleProximalWidth,RightMiddleProximalX,RightMiddleProximalY,RightMiddleProximalZ,RightMiddleProximalW,RightMiddleIntermediateWidth,RightMiddleIntermediateX,RightMiddleIntermediateY,RightMiddleIntermediateZ,RightMiddleIntermediateW,RightMiddleDistalWidth,RightMiddleDistalX,RightMiddleDistalY,RightMiddleDistalZ,RightMiddleDistalW,RightRingMetacarpalWidth,RightRingMetacarpalX,RightRingMetacarpalY,RightRingMetacarpalZ,RightRingMetacarpalW,RightRingProximalWidth,RightRingProximalX,RightRingProximalY,RightRingProximalZ,RightRingProximalW,RightRingIntermediateWidth,RightRingIntermediateX,RightRingIntermediateY,RightRingIntermediateZ,RightRingIntermediateW,RightRingDistalWidth,RightRingDistalX,RightRingDistalY,RightRingDistalZ,RightRingDistalW,RightPinkyMetacarpalWidth,RightPinkyMetacarpalX,RightPinkyMetacarpalY,RightPinkyMetacarpalZ,RightPinkyMetacarpalW,RightPinkyProximalWidth,RightPinkyProximalX,RightPinkyProximalY,RightPinkyProximalZ,RightPinkyProximalW,RightPinkyIntermediateWidth,RightPinkyIntermediateX,RightPinkyIntermediateY,RightPinkyIntermediateZ,RightPinkyIntermediateW,RightPinkyDistalWidth,RightPinkyDistalX,RightPinkyDistalY,RightPinkyDistalZ,RightPinkyDistalW,RightArmWidth,RightArmX,RightArmY,RightArmZ,RightArmW"
     with open("leapmotion_output.csv", "w") as file:
@@ -76,10 +77,14 @@ def initialise_leapmotion(hz: int):
         with connection.open():
             connection.set_tracking_mode(SELECTED_MODE)
             while running:
+                poll_start_time = time.time()
                 # if my_listener.is_hand():
                 #     print("Hand detected")
                 # else:
                 #     print("No hand detected")
+                if not first_collection and first_collection_callback:
+                    first_collection = True
+                    first_collection_callback()
                 for hand in my_listener.hands:
                     hand_data["left" if hand.type == leap.HandType.Left else "right"] = {
                         "palm": {
@@ -120,4 +125,5 @@ def initialise_leapmotion(hz: int):
                             file.write('\n')
                     else:
                         file.write('\n')
-                time.sleep(1/hz)
+                elapsed = time.time() - poll_start_time
+                time.sleep(1/hz - elapsed)  # Wait for the next data collection (based on the frequency)

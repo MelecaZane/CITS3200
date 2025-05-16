@@ -25,6 +25,10 @@ vive_thread = None
 camera_thread = None
 selected_camera_index = None
 
+polhemus_ready = threading.Event()
+leapmotion_ready = threading.Event()
+vive_ready = threading.Event()
+
 # Create the main window
 window = tk.Tk()
 window.title("Tracker Interface")
@@ -199,23 +203,32 @@ def begin_tracking():
         if not STARTED:
             STARTED = True
             start_time = time.time()
-            stopwatch_label.config(text="00:00:00")
+            # stopwatch_label.config(text="00:00:00")
             start_stopwatch()
             if POLHEMUS.get():
                 pol.stop_event.clear()
-                polhemus_thread = threading.Thread(target=pol.output_data, args=(hz,), daemon=True)
+                polhemus_thread = threading.Thread(target=pol.output_data,
+                                                   args=(hz,),
+                                                   kwargs={"first_collection_callback": polhemus_first_collection_callback},
+                                                   daemon=True)
                 polhemus_thread.start()
             if LEAPMOTION.get():
                 leapm.another = True
                 leapm.SELECTED_MODE = leapm.tracking_modes[leapmotion_mode.get()]
-                leapmotion_thread = threading.Thread(target=leapm.initialise_leapmotion, daemon=True, args=(hz,))
+                leapmotion_thread = threading.Thread(target=leapm.initialise_leapmotion,
+                                                     daemon=True,
+                                                     kwargs={"first_collection_callback": leapmotion_first_collection_callback},
+                                                     args=(hz,))
                 leapmotion_thread.start()
             if VIVE.get():
                 # Initialize OpenVR
                 try:
                     vive.openvr.init(vive.openvr.VRApplication_Scene)
                     vive.another = True
-                    vive_thread = threading.Thread(target=vive.record_indefinitely, daemon=True, args=(hz,))
+                    vive_thread = threading.Thread(target=vive.record_indefinitely,
+                                                   daemon=True,
+                                                   kwargs={"first_collection_callback": vive_first_collection_callback},
+                                                   args=(hz,))
                     vive_thread.start()
                 # Since VR is the last to be initialised, sending the stop button signal if failed will stop all other threads too
                 except Exception as e:
@@ -254,7 +267,32 @@ def start_stopwatch():
         time_str = f"{hours:02}:{minutes:02}:{seconds:02}.{milliseconds:03}"
         stopwatch_label.config(text=time_str)
         window.after(10, start_stopwatch) 
-        
+
+def start_stopwatch_callback():
+    global start_time
+    start_time = time.time()  # Reset the start time when the stopwatch starts
+    stopwatch_label.config(text="00:00:00")
+    start_stopwatch()  # Start the stopwatch
+
+def check_and_start_stopwatch():
+    if ((not POLHEMUS.get() or polhemus_ready.is_set()) and
+        (not VIVE.get() or vive_ready.is_set()) and
+        (not LEAPMOTION.get() or leapmotion_ready.is_set())):
+        if not hasattr(check_and_start_stopwatch, "started") or not check_and_start_stopwatch.started:
+            check_and_start_stopwatch.started = True
+            start_stopwatch_callback()
+
+def polhemus_first_collection_callback():
+    polhemus_ready.set()
+    check_and_start_stopwatch()
+
+def vive_first_collection_callback():
+    vive_ready.set()
+    check_and_start_stopwatch()
+
+def leapmotion_first_collection_callback():
+    leapmotion_ready.set()
+    check_and_start_stopwatch()
 
 def zip_files(files: list[str], zip_name: str):
     with zipfile.ZipFile(zip_name, "w") as zipf:

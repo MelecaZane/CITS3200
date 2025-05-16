@@ -99,7 +99,7 @@ def record_for_preset_time(duration_seconds, hz, export_format="csv"):
         time.sleep(max(0, 1/hz - elapsed))  # Wait for the next data collection (based on the frequency)
     print("Recording completed.")
 
-def record_indefinitely(hz, export_format="csv"):
+def record_indefinitely(hz, export_format="csv", first_collection_callback=None):
     """
     Optimized recording function with dynamic batch size based on polling frequency.
     
@@ -113,10 +113,16 @@ def record_indefinitely(hz, export_format="csv"):
     data_buffer = {"Headset": [], "Controller": [], "Tracker": [], "Unknown": []}
     
     print(f"Starting recording with polling frequency: {hz} Hz and batch size: {batch_size}")
+
+    first_collection = False
     
     while another:  # Continue recording until 'another' is set to False
         start_time = time.time()
         device_data = get_tracker_data()  # Get tracking data
+
+        if not first_collection and first_collection_callback:
+            first_collection = True
+            first_collection_callback()
 
         # Add data to buffer
         for key, value in device_data.items():

@@ -89,16 +89,22 @@ def close_trackers(tracker_list: list):
     for i in range(len(tracker_list)):
         tracker_list[i].Close()
 
-def output_data(hz: int):
+def output_data(hz: int, first_collection_callback=None):
     global another
     another = True
 
     trackers = initialise_polhemus(1)
+    first_collection = False
     with open("polhemus_output.csv", "w") as file:
         file.write("Timestamp,PositionX1,PositionY1,PositionZ1,AngleX1,AngleY1,AngleZ1,PositionX2,PositionY2,PositionZ2,AngleX2,AngleY2,AngleZ2,StylusButton,Sensor1,Sensor2\n")
         while another and not stop_event.is_set():
+            poll_start_time = time.time()
             data = get_polhemus_data(trackers, False)
+            if not first_collection and first_collection_callback:
+                first_collection = True
+                first_collection_callback()
             current_data = f"{data[0]['Timestamp']},{data[0]['PositionX1']},{data[0]['PositionY1']},{data[0]['PositionZ1']},{data[0]['AngleX1']},{data[0]['AngleY1']},{data[0]['AngleZ1']},{data[0]['PositionX2']},{data[0]['PositionY2']},{data[0]['PositionZ2']},{data[0]['AngleX2']},{data[0]['AngleY2']},{data[0]['AngleZ2']},0,0,0"
             print(current_data)
             file.write(current_data + "\n")
-            time.sleep(1/hz)
+            elapsed = time.time() - poll_start_time
+            time.sleep(1/hz - elapsed)  # Wait for the next data collection (based on the frequency)
