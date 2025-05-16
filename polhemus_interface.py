@@ -107,4 +107,4 @@ def output_data(hz: int, first_collection_callback=None):
             print(current_data)
             file.write(current_data + "\n")
             elapsed = time.time() - poll_start_time
-            time.sleep(1/hz - elapsed)  # Wait for the next data collection (based on the frequency)
+            time.sleep(max(0, 1/hz - elapsed))

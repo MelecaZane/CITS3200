@@ -194,6 +194,11 @@ def begin_tracking():
         messagebox.showerror("Polling rate error", "Please enter a valid integer for the polling rate.")
         return
     else:
+        polhemus_ready.clear()
+        leapmotion_ready.clear()
+        vive_ready.clear()
+        if hasattr(check_and_start_stopwatch, "started"):
+            check_and_start_stopwatch.started = False
         current_process = psutil.Process(os.getpid())
         current_process.nice(psutil.HIGH_PRIORITY_CLASS)  # Set the process to high priority
         # Check a valid mode is selected for leapmotion
