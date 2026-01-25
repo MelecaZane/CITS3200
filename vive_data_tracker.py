@@ -4,12 +4,16 @@ import csv  # For reading/writing CSV files
 import os  # OS-level operations (e.g., checking file size)
 import pandas as pd  # For working with data in DataFrames (used for xlsx output)
 import scipy.io as sio  # For saving data in MATLAB's .mat format
+import threading  # For threading events
 
 # Boolean variable to control indefinite recording loop
 another = True
 
 # Set to keep track of created files
 files = set()
+
+# Event to control when to start capturing data
+start_capture_event = threading.Event()
 
 def get_device_name_type_and_serial(device_index):
     """
@@ -176,3 +180,30 @@ def map_device_id_to_physical_tracker():
         print(f"ID {device_id}: {device_type}, Name: {device_name}, Serial: {device_serial}")
     
     return
+
+def start_vive(hz, export_format="csv"):
+    """
+    Starts Vive tracking indefinitely.
+    
+    :param hz: The frequency of data collection (in Hz).
+    :param export_format: The format in which to save the data (default is "csv").
+    """
+    record_indefinitely(hz, export_format)
+
+def start_vive_with_callback(hz, callback_func=None, export_format="csv"):
+    """
+    Enhanced version of start_vive that calls a callback when ready to start tracking.
+    
+    :param hz: The frequency of data collection (in Hz).
+    :param callback_func: Function to call when tracking is ready.
+    :param export_format: The format in which to save the data (default is "csv").
+    """
+    # Call the callback to signal that initialization is complete
+    if callback_func:
+        callback_func()
+    
+    # Wait for the start capture signal before beginning data capture
+    start_capture_event.wait()
+    
+    # Start the indefinite recording
+    record_indefinitely(hz, export_format)

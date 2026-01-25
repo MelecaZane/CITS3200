@@ -25,6 +25,10 @@ vive_thread = None
 camera_thread = None
 selected_camera_index = None
 
+# Variables to track tracker initialization
+trackers_to_initialize = 0
+trackers_initialized = 0
+
 # Create the main window
 window = tk.Tk()
 window.title("Tracker Interface")
@@ -88,6 +92,14 @@ def toggle_leapmotion():
 
 # Underlying functions for start and stop buttons
 def start_button_wrapper():
+    global start_time
+    start_time = None  # Reset the start time
+      # Reset all capture events
+    pol.start_capture_event.clear()
+    leapm.start_capture_event.clear()
+    vive.start_capture_event.clear()
+    camera.start_capture_event.clear()
+    
     try:
         os.remove("polhemus_output.csv")
     except:
@@ -125,10 +137,13 @@ def start_button_wrapper():
             messagebox.showerror("Camera Selection Error", "Please select a camera before starting.")
             return  # If no camera selected, stop further execution
     
-    #Start trackers and camera if selected
+    #Start trackers first
     begin_tracking()
+    
+    #Start camera recording with callback if camera is selected
     if USE_CAMERA.get():
-        camera.start_camera_recording(selected_camera_index, camera_var, window)# Start camera recording
+        camera.start_camera_recording_with_callback(selected_camera_index, camera_var, window, tracker_ready_callback)
+    
     toggle_stop()
 
 def stop_button_wrapper():
@@ -189,41 +204,92 @@ def begin_tracking():
     except ValueError:
         messagebox.showerror("Polling rate error", "Please enter a valid integer for the polling rate.")
         return
-    else:
-        # Check a valid mode is selected for leapmotion
+    else:        # Check a valid mode is selected for leapmotion
         if LEAPMOTION.get() and (leapmotion_mode.get() not in ["Desktop", "Head Mounted", "Screentop"]):
             raise ValueError("Please select a valid mode for Leapmotion.")
-        global STARTED, start_time
+        global STARTED, start_time, trackers_to_initialize, trackers_initialized, polhemus_thread, leapmotion_thread, vive_thread
         if not STARTED:
             STARTED = True
-            start_time = time.time()
-            stopwatch_label.config(text="00:00:00")
-            start_stopwatch()
+            
+            # Count how many systems need to initialize
+            trackers_to_initialize = 0
+            trackers_initialized = 0
+            if POLHEMUS.get():
+                trackers_to_initialize += 1
+            if LEAPMOTION.get():
+                trackers_to_initialize += 1
+            if VIVE.get():
+                trackers_to_initialize += 1
+            if USE_CAMERA.get():
+                trackers_to_initialize += 1
+            
+            # Initialize all trackers first before starting timer
+            initialization_successful = True
+            
             if POLHEMUS.get():
                 pol.stop_event.clear()
-                polhemus_thread = threading.Thread(target=pol.output_data, args=(hz,), daemon=True)
+                polhemus_thread = threading.Thread(target=pol.output_data_with_callback, args=(hz, tracker_ready_callback), daemon=True)
                 polhemus_thread.start()
             if LEAPMOTION.get():
                 leapm.another = True
                 leapm.SELECTED_MODE = leapm.tracking_modes[leapmotion_mode.get()]
-                leapmotion_thread = threading.Thread(target=leapm.initialise_leapmotion, daemon=True, args=(hz,))
+                leapmotion_thread = threading.Thread(target=leapm.initialise_leapmotion_with_callback, daemon=True, args=(hz, tracker_ready_callback))
                 leapmotion_thread.start()
             if VIVE.get():
                 # Initialize OpenVR
                 try:
                     vive.openvr.init(vive.openvr.VRApplication_Scene)
                     vive.another = True
-                    vive_thread = threading.Thread(target=vive.start_vive, daemon=True, args=(hz,))
+                    vive_thread = threading.Thread(target=vive.start_vive_with_callback, daemon=True, args=(hz, tracker_ready_callback))
                     vive_thread.start()
                 # Since VR is the last to be initialised, sending the stop button signal if failed will stop all other threads too
                 except:
+                    STARTED = False
+                    initialization_successful = False
                     stop_output()
                     stop_button_wrapper()
                     messagebox.showerror("Could not initialize OpenVR", "Please ensure SteamVR is running and a headset is connected.", parent=window)
                     print("Error: Could not initialize OpenVR. Please ensure SteamVR is running and a headset is connected.")
-
+            
+            # If no trackers were selected or initialization failed, start timer immediately
+            if trackers_to_initialize == 0 or not initialization_successful:
+                if initialization_successful:
+                    start_timer()
         else:
             print("Already started.")
+
+def tracker_ready_callback():
+    '''
+    Called when each tracker is ready to capture data.
+    Starts the timer synchronously when ALL trackers are ready.
+    '''
+    global start_time, trackers_initialized, trackers_to_initialize
+    trackers_initialized += 1
+    
+    # Start timer only when ALL trackers/cameras are ready
+    if trackers_initialized >= trackers_to_initialize and start_time is None:
+        start_timer()
+        print(f"All {trackers_to_initialize} systems ready - starting timer!")
+
+def start_timer():
+    '''
+    Starts the stopwatch timer and signals all trackers to begin data capture.
+    '''
+    global start_time
+    start_time = time.time()
+    stopwatch_label.config(text="00:00:00")
+    
+    # Signal all trackers to start capturing data
+    if POLHEMUS.get():
+        pol.start_capture_event.set()
+    if LEAPMOTION.get():
+        leapm.start_capture_event.set()
+    if VIVE.get():
+        vive.start_capture_event.set()
+    if USE_CAMERA.get():
+        camera.start_capture_event.set()
+    
+    start_stopwatch()
 
 def open_file_picker():
     if not STARTED:
