@@ -15,6 +15,10 @@ files = set()
 # Event to control when to start capturing data
 start_capture_event = threading.Event()
 
+# Dictionary to keep file handles open for better performance
+open_files = {}
+file_writers = {}
+
 def get_device_name_type_and_serial(device_index):
     """
     Retrieve the device's name, type (e.g., Headset, Controller, Tracker), and serial number.
@@ -135,6 +139,82 @@ def write_data_to_files(device_data, export_format="csv"):
                 # Print any errors that occur during file writing
                 print(f"Error writing to file {file_name}: {e}")
 
+def initialize_data_files(export_format="csv"):
+    """
+    Pre-initialize data files and keep them open for better performance.
+    """
+    global open_files, file_writers
+    
+    # Clear any existing file handles
+    close_data_files()
+    
+    # Get initial device data to determine which files we need
+    device_data, _ = get_tracker_data()
+    
+    for device_type, devices in device_data.items():
+        for device in devices:
+            device_id, device_name, device_serial, *pose_data = device
+            file_name = f"{device_type.lower()}_{device_serial}_data.{export_format}"
+            files.add(file_name)
+            
+            if export_format == "csv":
+                # Open file in append mode and keep it open
+                file_handle = open(file_name, mode="w", newline="")
+                csv_writer = csv.writer(file_handle)
+                
+                # Write header
+                header = ["Timestamp", "Device ID", "Device Name", "Device Serial", "M00", "M01", "M02", "M03", 
+                         "M10", "M11", "M12", "M13", "M20", "M21", "M22", "M23"]
+                csv_writer.writerow(header)
+                
+                # Store file handle and writer
+                open_files[file_name] = file_handle
+                file_writers[file_name] = csv_writer
+
+def close_data_files():
+    """
+    Close all open data files.
+    """
+    global open_files, file_writers
+    
+    for file_handle in open_files.values():
+        if file_handle and not file_handle.closed:
+            file_handle.close()
+    
+    open_files.clear()
+    file_writers.clear()
+
+def write_data_to_files_optimized(device_data, export_format="csv"):
+    """
+    Optimized version that writes to pre-opened files for better performance.
+    
+    :param device_data: Dictionary containing tracking data for each device type.
+    :param export_format: The format in which to save the data (currently only "csv" supported for optimization).
+    """
+    if export_format != "csv":
+        # Fall back to original method for non-CSV formats
+        write_data_to_files(device_data, export_format)
+        return
+    
+    current_time = time.time()
+    
+    # Loop through each type of device (Headset, Controller, Tracker, Unknown)
+    for device_type, devices in device_data.items():
+        # Loop through each device's data
+        for device in devices:
+            device_id, device_name, device_serial, *pose_data = device
+            file_name = f"{device_type.lower()}_{device_serial}_data.{export_format}"
+            
+            # Write to pre-opened file
+            if file_name in file_writers:
+                try:
+                    file_writers[file_name].writerow([current_time] + [device_id, device_name, device_serial] + pose_data)
+                    # Flush periodically for real-time viewing (every 10th sample to balance performance)
+                    if int(current_time * 10) % 10 == 0:
+                        open_files[file_name].flush()
+                except Exception as e:
+                    print(f"Error writing to file {file_name}: {e}")
+
 def record_for_preset_time(duration_seconds, hz, export_format="csv"):
     """
     Records device tracking data for a preset time duration at a given frequency.
@@ -143,11 +223,31 @@ def record_for_preset_time(duration_seconds, hz, export_format="csv"):
     :param hz: The frequency of data collection (in Hz, i.e., number of recordings per second).
     :param export_format: The format in which to save the data (default is "csv").
     """
+    initialize_data_files(export_format)  # Initialize data files
+    
+    target_interval = 1.0 / hz  # Target time between samples
     start_time = time.time()  # Start timer
+    next_sample_time = start_time
+    
     while time.time() - start_time < duration_seconds:  # Loop until the preset duration is reached
-        device_data, completion_rate = get_tracker_data()  # Get tracking data
-        write_data_to_files(device_data, export_format)  # Save the data
-        time.sleep(1/hz)  # Wait for the next data collection (based on the frequency)
+        current_time = time.time()
+        
+        # Only sample if we've reached the target time
+        if current_time >= next_sample_time:
+            device_data, completion_rate = get_tracker_data()  # Get tracking data
+            write_data_to_files_optimized(device_data, export_format)  # Save the data
+            
+            # Schedule next sample time (prevents drift)
+            next_sample_time += target_interval
+            
+            # If we're falling behind, reset the timing to prevent accumulating delay
+            if next_sample_time < current_time:
+                next_sample_time = current_time + target_interval
+        
+        # Short sleep to prevent excessive CPU usage
+        time.sleep(0.001)  # 1ms sleep to yield CPU
+    
+    close_data_files()  # Close data files
     print("Recording completed.")
 
 def record_indefinitely(hz, export_format="csv"):
@@ -157,10 +257,28 @@ def record_indefinitely(hz, export_format="csv"):
     :param hz: The frequency of data collection (in Hz, i.e., number of recordings per second).
     :param export_format: The format in which to save the data (default is "csv").
     """
+    initialize_data_files(export_format)  # Initialize data files
+    target_interval = 1.0 / hz  # Target time between samples
+    next_sample_time = time.time()  # Initialize the next sample time
+    
     while another:  # Continue recording until 'another' is set to False
-        device_data, completion_rate = get_tracker_data()  # Get tracking data
-        write_data_to_files(device_data, export_format)  # Save the data
-        time.sleep(1/hz)  # Wait for the next data collection (based on the frequency)
+        current_time = time.time()
+        
+        # Only sample if we've reached the target time
+        if current_time >= next_sample_time:
+            device_data, completion_rate = get_tracker_data()  # Get tracking data
+            write_data_to_files_optimized(device_data, export_format)  # Save the data
+            
+            # Schedule next sample time (prevents drift)
+            next_sample_time += target_interval
+            
+            # If we're falling behind, reset the timing to prevent accumulating delay
+            if next_sample_time < current_time:
+                next_sample_time = current_time + target_interval
+        
+        # Short sleep to prevent excessive CPU usage
+        time.sleep(0.001)  # 1ms sleep to yield CPU
+    close_data_files()  # Close data files
 
 def map_device_id_to_physical_tracker():
     """
