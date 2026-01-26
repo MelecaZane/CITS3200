@@ -18,6 +18,7 @@ import threading
 # True for output to occur.
 another = False
 stop_event = threading.Event()
+start_capture_event = threading.Event()  # New event to control when to start capturing data
 
 def initialise_polhemus(amount: int) -> list:
     """
@@ -96,6 +97,33 @@ def output_data(hz: int):
     trackers = initialise_polhemus(1)
     with open("polhemus_output.csv", "w") as file:
         file.write("Timestamp,PositionX1,PositionY1,PositionZ1,AngleX1,AngleY1,AngleZ1,PositionX2,PositionY2,PositionZ2,AngleX2,AngleY2,AngleZ2,StylusButton,Sensor1,Sensor2\n")
+        while another and not stop_event.is_set():
+            data = get_polhemus_data(trackers, False)
+            current_data = f"{data[0]['Timestamp']},{data[0]['PositionX1']},{data[0]['PositionY1']},{data[0]['PositionZ1']},{data[0]['AngleX1']},{data[0]['AngleY1']},{data[0]['AngleZ1']},{data[0]['PositionX2']},{data[0]['PositionY2']},{data[0]['PositionZ2']},{data[0]['AngleX2']},{data[0]['AngleY2']},{data[0]['AngleZ2']},0,0,0"
+            print(current_data)
+            file.write(current_data + "\n")
+            time.sleep(1/hz)
+
+def output_data_with_callback(hz: int, callback_func=None):
+    """
+    Enhanced version of output_data that calls a callback when ready to start tracking.
+    """
+    global another
+    another = True
+
+    # Initialize trackers - this may take time
+    trackers = initialise_polhemus(1)
+    
+    with open("polhemus_output.csv", "w") as file:
+        file.write("Timestamp,PositionX1,PositionY1,PositionZ1,AngleX1,AngleY1,AngleZ1,PositionX2,PositionY2,PositionZ2,AngleX2,AngleY2,AngleZ2,StylusButton,Sensor1,Sensor2\n")
+        
+        # Call the callback to signal that initialization is complete
+        if callback_func:
+            callback_func()
+        
+        # Wait for the start capture signal before beginning data capture
+        start_capture_event.wait()
+            
         while another and not stop_event.is_set():
             data = get_polhemus_data(trackers, False)
             current_data = f"{data[0]['Timestamp']},{data[0]['PositionX1']},{data[0]['PositionY1']},{data[0]['PositionZ1']},{data[0]['AngleX1']},{data[0]['AngleY1']},{data[0]['AngleZ1']},{data[0]['PositionX2']},{data[0]['PositionY2']},{data[0]['PositionZ2']},{data[0]['AngleX2']},{data[0]['AngleY2']},{data[0]['AngleZ2']},0,0,0"

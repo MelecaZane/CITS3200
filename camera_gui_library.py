@@ -2,6 +2,7 @@ import cv2
 import datetime
 import tkinter as tk
 from tkinter import messagebox
+import threading
 
 # Global variables for camera and recording
 cap = None
@@ -9,6 +10,9 @@ out = None
 is_recording = False
 selected_camera_index = None
 camera_output_file = None
+
+# Event to control when to start capturing data
+start_capture_event = threading.Event()
 
 #Open up camera
 def initialize_camera(camera_index):
@@ -40,6 +44,39 @@ def start_camera_recording(selected_camera_index, camera_var, window):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) #Default camera resolution
     out = cv2.VideoWriter(camera_output_file, fourcc, fps, (width, height))
     is_recording = True
+    process_frame(window)
+
+def start_camera_recording_with_callback(selected_camera_index, camera_var, window, callback_func=None):
+    """
+    Enhanced version of start_camera_recording that calls a callback when ready to start recording.
+    """
+    global out, is_recording, camera_output_file
+
+    if is_recording:
+        messagebox.showinfo("Recording already started")
+        return
+    if selected_camera_index is None:
+        messagebox.showerror("Error", "Please select a camera first.")
+        return
+    if not initialize_camera(selected_camera_index):
+        return
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    camera_output_file = f"output_{timestamp}.mov"
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0 #Default to 30 fps if cant get default fps of camera
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))  #Default camera resolution
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) #Default camera resolution
+    out = cv2.VideoWriter(camera_output_file, fourcc, fps, (width, height))
+    is_recording = True
+    
+    # Call the callback to signal that camera recording is ready
+    if callback_func:
+        callback_func()
+    
+    # Wait for the start capture signal before beginning actual recording
+    start_capture_event.wait()
+    
     process_frame(window)
 
 #Releases resources after stopping recording
