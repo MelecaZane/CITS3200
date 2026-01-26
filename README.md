@@ -1,4 +1,4 @@
-https://github.com/MasterLu0309/CITS3200
+https://github.com/MelecaZane/CITS3200
 # Installation
 ## Prerequisites
 - [*Python 3*](https://python.org/) (tested working with Python 3.11.8)
