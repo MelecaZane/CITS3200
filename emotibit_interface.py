@@ -51,17 +51,19 @@ def initialise_emotibit_with_callback(hz: int, ip_address: str = "", callback_fu
             pass
         raise
 
-    # Retrieve the channel indices for each data type from the board description.
-    # Use get_board_descr() dict instead of static helper methods; the helpers raise
-    # UNSUPPORTED_BOARD_ERROR when a channel type is absent from the board descriptor.
+    # Retrieve the channel indices for each data type from the live board description.
+    # Call get_board_descr() on the board instance (not the class) after start_stream()
+    # so that the descriptor is populated with the actual connected device's channels
+    # (e.g. PPG, EDA, temperature channels which are absent in the static bundled JSON).
     board_id = BoardIds.EMOTIBIT_BOARD
-    descr = BoardShim.get_board_descr(board_id)
+    descr = board.get_board_descr(board_id)
     ppg_channels         = descr.get("ppg_channels", []) or []          # [red, IR, green]
     eda_channels         = descr.get("eda_channels", []) or []
     temperature_channels = descr.get("temperature_channels", []) or []
     accel_channels       = descr.get("accel_channels", []) or []        # [X, Y, Z]
     gyro_channels        = descr.get("gyro_channels", []) or []         # [X, Y, Z]
     mag_channels         = descr.get("magnetometer_channels", []) or [] # [X, Y, Z]
+    timestamp_channel    = descr.get("timestamp_channel")
 
     try:
         with open("emotibit_output.csv", "w") as file:
@@ -87,40 +89,29 @@ def initialise_emotibit_with_callback(hz: int, ip_address: str = "", callback_fu
 
                 data = board.get_board_data()  # Returns all samples accumulated since last call
 
-                if data.shape[1] > 0:
-                    # Use the timestamp of the most-recent sample for the row.
-                    timestamp = time.time()
+                # Helper to safely read a value from a channel list at sample index i.
+                def val(channels, col, i):
+                    if channels and col < len(channels):
+                        return data[channels[col], i]
+                    return ""
 
-                    # Helper to safely read the latest value from a channel list.
-                    def latest(channels, col=0):
-                        if channels and col < len(channels):
-                            col_data = data[channels[col], :]
-                            return col_data[-1] if len(col_data) > 0 else ""
-                        return ""
-
-                    ppg_red   = latest(ppg_channels, 0)
-                    ppg_ir    = latest(ppg_channels, 1)
-                    ppg_green = latest(ppg_channels, 2)
-                    eda       = latest(eda_channels, 0)
-                    temp      = latest(temperature_channels, 0)
-                    accel_x   = latest(accel_channels, 0)
-                    accel_y   = latest(accel_channels, 1)
-                    accel_z   = latest(accel_channels, 2)
-                    gyro_x    = latest(gyro_channels, 0)
-                    gyro_y    = latest(gyro_channels, 1)
-                    gyro_z    = latest(gyro_channels, 2)
-                    mag_x     = latest(mag_channels, 0)
-                    mag_y     = latest(mag_channels, 1)
-                    mag_z     = latest(mag_channels, 2)
+                # Write one CSV row per device sample so no data is discarded.
+                # data shape: (num_channels, num_samples); each column is one sample.
+                for i in range(data.shape[1]):
+                    # Prefer the board's own hardware timestamp when available.
+                    if timestamp_channel is not None:
+                        timestamp = data[timestamp_channel, i]
+                    else:
+                        timestamp = time.time()
 
                     row = (
                         f"{timestamp},"
-                        f"{ppg_red},{ppg_ir},{ppg_green},"
-                        f"{eda},"
-                        f"{temp},"
-                        f"{accel_x},{accel_y},{accel_z},"
-                        f"{gyro_x},{gyro_y},{gyro_z},"
-                        f"{mag_x},{mag_y},{mag_z}"
+                        f"{val(ppg_channels, 0, i)},{val(ppg_channels, 1, i)},{val(ppg_channels, 2, i)},"
+                        f"{val(eda_channels, 0, i)},"
+                        f"{val(temperature_channels, 0, i)},"
+                        f"{val(accel_channels, 0, i)},{val(accel_channels, 1, i)},{val(accel_channels, 2, i)},"
+                        f"{val(gyro_channels, 0, i)},{val(gyro_channels, 1, i)},{val(gyro_channels, 2, i)},"
+                        f"{val(mag_channels, 0, i)},{val(mag_channels, 1, i)},{val(mag_channels, 2, i)}"
                     )
                     file.write(row + "\n")
 
