@@ -5,6 +5,7 @@ import polhemus_interface as pol
 import leapmotion_interface as leapm
 import vive_data_tracker as vive
 import camera_gui_library as camera
+import emotibit_interface as emotibit
 import os
 import zipfile
 import time
@@ -23,6 +24,7 @@ polhemus_thread = None
 leapmotion_thread = None
 vive_thread = None
 camera_thread = None
+emotibit_thread = None
 selected_camera_index = None
 
 # Variables to track tracker initialization
@@ -39,6 +41,7 @@ POLHEMUS = tk.BooleanVar()
 LEAPMOTION = tk.BooleanVar()
 VIVE = tk.BooleanVar()
 USE_CAMERA = tk.BooleanVar()
+EMOTIBIT = tk.BooleanVar()
 
 # POLLING RATE
 label = tk.Label(window, text="Polling Rate (Hz):")
@@ -52,16 +55,16 @@ stopwatch_label.grid(row=0, column=3)
 
 # Add Camera checkbox
 camera_checkbox = tk.Checkbutton(window, text="Camera", variable=USE_CAMERA)
-camera_checkbox.grid(row=4, column=0, sticky="w")
+camera_checkbox.grid(row=5, column=0, sticky="w")
 
 #Dropdown for camera selection
 camera_var = tk.StringVar(value="Select a camera")
 camera_dropdown = ttk.Combobox(window, textvariable=camera_var, values=[], state="readonly")
-camera_dropdown.grid(row=4, column=1)  
+camera_dropdown.grid(row=5, column=1)  
 
 # Button for camera preview
 preview_button = tk.Button(window, text="Preview Camera", command=lambda: camera.preview_camera(selected_camera_index))
-preview_button.grid(row=4, column=2) 
+preview_button.grid(row=5, column=2) 
 
 
 
@@ -99,6 +102,7 @@ def start_button_wrapper():
     leapm.start_capture_event.clear()
     vive.start_capture_event.clear()
     camera.start_capture_event.clear()
+    emotibit.start_capture_event.clear()
     
     try:
         os.remove("polhemus_output.csv")
@@ -106,6 +110,10 @@ def start_button_wrapper():
         pass
     try:
         os.remove("leapmotion_output.csv")
+    except:
+        pass
+    try:
+        os.remove("emotibit_output.csv")
     except:
         pass
     try:
@@ -168,6 +176,14 @@ leapmotion_checkbox.grid(row=2, column=0, sticky="w")
 vive_checkbox = tk.Checkbutton(window, text="Vive", variable=VIVE)
 vive_checkbox.grid(row=3, column=0, sticky="w")
 
+emotibit_checkbox = tk.Checkbutton(window, text="EmotiBit", variable=EMOTIBIT)
+emotibit_checkbox.grid(row=4, column=0, sticky="w")
+
+emotibit_ip_label = tk.Label(window, text="EmotiBit IP:")
+emotibit_ip_label.grid(row=4, column=1, sticky="e")
+emotibit_ip_field = tk.Entry(window, width=15)
+emotibit_ip_field.grid(row=4, column=2, sticky="w")
+
 # Leapmotion mode dropdown
 # These are the same three modes that can be seen in the Leapmotion Control Panel.
 options = ["Desktop", "Head Mounted", "Screentop"]
@@ -190,6 +206,10 @@ def stop_output():
         leapm.connection.disconnect()
     if VIVE.get():
         vive.another = False
+    if EMOTIBIT.get():
+        emotibit.another = False
+        emotibit.stop_event.set()
+        emotibit.start_capture_event.clear()
     STARTED = False
 
 def begin_tracking():
@@ -207,7 +227,7 @@ def begin_tracking():
     else:        # Check a valid mode is selected for leapmotion
         if LEAPMOTION.get() and (leapmotion_mode.get() not in ["Desktop", "Head Mounted", "Screentop"]):
             raise ValueError("Please select a valid mode for Leapmotion.")
-        global STARTED, start_time, trackers_to_initialize, trackers_initialized, polhemus_thread, leapmotion_thread, vive_thread
+        global STARTED, start_time, trackers_to_initialize, trackers_initialized, polhemus_thread, leapmotion_thread, vive_thread, emotibit_thread
         if not STARTED:
             STARTED = True
             
@@ -219,6 +239,8 @@ def begin_tracking():
             if LEAPMOTION.get():
                 trackers_to_initialize += 1
             if VIVE.get():
+                trackers_to_initialize += 1
+            if EMOTIBIT.get():
                 trackers_to_initialize += 1
             if USE_CAMERA.get():
                 trackers_to_initialize += 1
@@ -250,6 +272,24 @@ def begin_tracking():
                     stop_button_wrapper()
                     messagebox.showerror("Could not initialize OpenVR", "Please ensure SteamVR is running and a headset is connected.", parent=window)
                     print("Error: Could not initialize OpenVR. Please ensure SteamVR is running and a headset is connected.")
+            if EMOTIBIT.get():
+                try:
+                    emotibit.stop_event.clear()
+                    emotibit.another = True
+                    ip_address = emotibit_ip_field.get().strip()
+                    emotibit_thread = threading.Thread(
+                        target=emotibit.initialise_emotibit_with_callback,
+                        daemon=True,
+                        args=(hz, ip_address, tracker_ready_callback)
+                    )
+                    emotibit_thread.start()
+                except Exception as e:
+                    STARTED = False
+                    initialization_successful = False
+                    stop_output()
+                    stop_button_wrapper()
+                    messagebox.showerror("Could not initialize EmotiBit", f"Please ensure the EmotiBit is connected and the IP address is correct.\n{e}", parent=window)
+                    print(f"Error: Could not initialize EmotiBit. {e}")
             
             # If no trackers were selected or initialization failed, start timer immediately
             if trackers_to_initialize == 0 or not initialization_successful:
@@ -286,6 +326,8 @@ def start_timer():
         leapm.start_capture_event.set()
     if VIVE.get():
         vive.start_capture_event.set()
+    if EMOTIBIT.get():
+        emotibit.start_capture_event.set()
     if USE_CAMERA.get():
         camera.start_capture_event.set()
     
@@ -295,7 +337,7 @@ def open_file_picker():
     if not STARTED:
         file_path = filedialog.asksaveasfilename(defaultextension=".zip", filetypes=[("ZIP Files", "*.zip")])
         print(file_path)
-        file_list = ["polhemus_output.csv", "leapmotion_output.csv"]
+        file_list = ["polhemus_output.csv", "leapmotion_output.csv", "emotibit_output.csv"]
         file_list.extend(vive.files)
 
         if camera.camera_output_file:
@@ -373,7 +415,7 @@ file_picker_button.grid(row=3, column=3)
 
 # Add the Help button
 help_button = tk.Button(window, text="Help", command=show_help)
-help_button.grid(row=4, column=3, sticky="ew", padx=5, pady=5)
+help_button.grid(row=5, column=3, sticky="ew", padx=5, pady=5)
 
 def start_timed_recording():
     '''
@@ -385,14 +427,14 @@ def start_timed_recording():
 
 # Add a label and entry field for the user to specify the recording duration (in minutes)
 label_duration = tk.Label(window, text="Recording Duration (mins):")
-label_duration.grid(row=5, column=0)
+label_duration.grid(row=6, column=0)
 
 duration_field = tk.Entry(window)
-duration_field.grid(row=5, column=1)
+duration_field.grid(row=6, column=1)
 
 # Add a new button for timed recording
 timed_button = tk.Button(window, text="Start Timed Recording", command=start_timed_recording)
-timed_button.grid(row=5, column=3, sticky="ew")
+timed_button.grid(row=6, column=3, sticky="ew")
 
 def check_stopwatch():
     if minutes >= int(duration_field.get()):
@@ -408,6 +450,10 @@ if __name__ == "__main__":
         pass
     try:
         os.remove("leapmotion_output.csv")
+    except:
+        pass
+    try:
+        os.remove("emotibit_output.csv")
     except:
         pass
     try:
