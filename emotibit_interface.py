@@ -52,13 +52,16 @@ def initialise_emotibit_with_callback(hz: int, ip_address: str = "", callback_fu
         raise
 
     # Retrieve the channel indices for each data type from the board description.
+    # Use get_board_descr() dict instead of static helper methods; the helpers raise
+    # UNSUPPORTED_BOARD_ERROR when a channel type is absent from the board descriptor.
     board_id = BoardIds.EMOTIBIT_BOARD
-    ppg_channels = BoardShim.get_ppg_channels(board_id)       # [red, IR, green]
-    eda_channels = BoardShim.get_eda_channels(board_id)
-    temperature_channels = BoardShim.get_temperature_channels(board_id)
-    accel_channels = BoardShim.get_accel_channels(board_id)   # [X, Y, Z]
-    gyro_channels = BoardShim.get_gyro_channels(board_id)     # [X, Y, Z]
-    mag_channels = BoardShim.get_magnetometer_channels(board_id)  # [X, Y, Z]
+    descr = BoardShim.get_board_descr(board_id)
+    ppg_channels         = descr.get("ppg_channels", []) or []          # [red, IR, green]
+    eda_channels         = descr.get("eda_channels", []) or []
+    temperature_channels = descr.get("temperature_channels", []) or []
+    accel_channels       = descr.get("accel_channels", []) or []        # [X, Y, Z]
+    gyro_channels        = descr.get("gyro_channels", []) or []         # [X, Y, Z]
+    mag_channels         = descr.get("magnetometer_channels", []) or [] # [X, Y, Z]
 
     try:
         with open("emotibit_output.csv", "w") as file:
