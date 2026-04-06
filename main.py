@@ -113,7 +113,15 @@ def start_button_wrapper():
     except:
         pass
     try:
-        os.remove("emotibit_output.csv")
+        os.remove("emotibit_imu.csv")
+    except:
+        pass
+    try:
+        os.remove("emotibit_ppg.csv")
+    except:
+        pass
+    try:
+        os.remove("emotibit_bio.csv")
     except:
         pass
     try:
@@ -337,7 +345,8 @@ def open_file_picker():
     if not STARTED:
         file_path = filedialog.asksaveasfilename(defaultextension=".zip", filetypes=[("ZIP Files", "*.zip")])
         print(file_path)
-        file_list = ["polhemus_output.csv", "leapmotion_output.csv", "emotibit_output.csv"]
+        file_list = ["polhemus_output.csv", "leapmotion_output.csv",
+                     "emotibit_imu.csv", "emotibit_ppg.csv", "emotibit_bio.csv"]
         file_list.extend(vive.files)
 
         if camera.camera_output_file:
@@ -453,7 +462,15 @@ if __name__ == "__main__":
     except:
         pass
     try:
-        os.remove("emotibit_output.csv")
+        os.remove("emotibit_imu.csv")
+    except:
+        pass
+    try:
+        os.remove("emotibit_ppg.csv")
+    except:
+        pass
+    try:
+        os.remove("emotibit_bio.csv")
     except:
         pass
     try:
