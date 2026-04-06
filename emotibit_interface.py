@@ -1,6 +1,6 @@
 import time
 import threading
-from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds
+from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds, BrainFlowPresets
 
 # Requires BrainFlow SDK: pip install brainflow
 # EmotiBit connects over WiFi.  Provide the device's IP address (or leave
@@ -51,19 +51,30 @@ def initialise_emotibit_with_callback(hz: int, ip_address: str = "", callback_fu
             pass
         raise
 
-    # Retrieve the channel indices for each data type from the live board description.
-    # Call get_board_descr() on the board instance (not the class) after start_stream()
-    # so that the descriptor is populated with the actual connected device's channels
-    # (e.g. PPG, EDA, temperature channels which are absent in the static bundled JSON).
-    board_id = BoardIds.EMOTIBIT_BOARD
-    descr = board.get_board_descr(board_id)
-    ppg_channels         = descr.get("ppg_channels", []) or []          # [red, IR, green]
-    eda_channels         = descr.get("eda_channels", []) or []
-    temperature_channels = descr.get("temperature_channels", []) or []
-    accel_channels       = descr.get("accel_channels", []) or []        # [X, Y, Z]
-    gyro_channels        = descr.get("gyro_channels", []) or []         # [X, Y, Z]
-    mag_channels         = descr.get("magnetometer_channels", []) or [] # [X, Y, Z]
-    timestamp_channel    = descr.get("timestamp_channel")
+    # BrainFlow exposes EmotiBit data across three presets, each with its own
+    # ring buffer and sampling rate:
+    #   DEFAULT_PRESET   – IMU (accel/gyro/mag) at 25 Hz
+    #   AUXILIARY_PRESET – PPG (red/IR/green)    at 25 Hz
+    #   ANCILLARY_PRESET – EDA + temperature     at 15 Hz
+    # Channel indices come from the static descriptor for each preset.
+
+    def _descr(preset):
+        return BoardShim.get_board_descr(BoardIds.EMOTIBIT_BOARD, preset)
+
+    imu_descr = _descr(BrainFlowPresets.DEFAULT_PRESET)
+    accel_channels = imu_descr.get("accel_channels", []) or []
+    gyro_channels  = imu_descr.get("gyro_channels", []) or []
+    mag_channels   = imu_descr.get("magnetometer_channels", []) or []
+    imu_ts_channel = imu_descr.get("timestamp_channel")
+
+    ppg_descr    = _descr(BrainFlowPresets.AUXILIARY_PRESET)
+    ppg_channels = ppg_descr.get("ppg_channels", []) or []  # [red, IR, green]
+    ppg_ts_channel = ppg_descr.get("timestamp_channel")
+
+    bio_descr            = _descr(BrainFlowPresets.ANCILLARY_PRESET)
+    eda_channels         = bio_descr.get("eda_channels", []) or []
+    temperature_channels = bio_descr.get("temperature_channels", []) or []
+    bio_ts_channel       = bio_descr.get("timestamp_channel")
 
     try:
         with open("emotibit_output.csv", "w") as file:
@@ -84,36 +95,62 @@ def initialise_emotibit_with_callback(hz: int, ip_address: str = "", callback_fu
             # Wait for the unified start signal before recording data.
             start_capture_event.wait()
 
+            def _ts(matrix, ts_col, col_idx):
+                """Return the hardware timestamp for sample col_idx, or wall time."""
+                if ts_col is not None:
+                    return matrix[ts_col, col_idx]
+                return time.time()
+
+            def _v(matrix, channels, ch_idx, col_idx):
+                """Safely read one value from a channel list; return empty string if absent."""
+                if channels and ch_idx < len(channels):
+                    return matrix[channels[ch_idx], col_idx]
+                return ""
+
+            # CSV column layout (indices 0-14):
+            #  0:Timestamp  1:PPG_Red  2:PPG_IR  3:PPG_Green  4:EDA  5:Temperature
+            #  6:AccelX  7:AccelY  8:AccelZ  9:GyroX  10:GyroY  11:GyroZ
+            #  12:MagX  13:MagY  14:MagZ
+
             while another and not stop_event.is_set():
                 loop_start = time.time()
 
-                data = board.get_board_data()  # Returns all samples accumulated since last call
+                # Flush each preset's ring buffer independently.
+                imu_data = board.get_board_data(preset=BrainFlowPresets.DEFAULT_PRESET)
+                ppg_data = board.get_board_data(preset=BrainFlowPresets.AUXILIARY_PRESET)
+                bio_data = board.get_board_data(preset=BrainFlowPresets.ANCILLARY_PRESET)
 
-                # Helper to safely read a value from a channel list at sample index i.
-                def val(channels, col, i):
-                    if channels and col < len(channels):
-                        return data[channels[col], i]
-                    return ""
+                # --- IMU rows (accel / gyro / mag) ---
+                for i in range(imu_data.shape[1]):
+                    v = [""] * 15
+                    v[0]  = _ts(imu_data, imu_ts_channel, i)
+                    v[6]  = _v(imu_data, accel_channels, 0, i)
+                    v[7]  = _v(imu_data, accel_channels, 1, i)
+                    v[8]  = _v(imu_data, accel_channels, 2, i)
+                    v[9]  = _v(imu_data, gyro_channels, 0, i)
+                    v[10] = _v(imu_data, gyro_channels, 1, i)
+                    v[11] = _v(imu_data, gyro_channels, 2, i)
+                    v[12] = _v(imu_data, mag_channels, 0, i)
+                    v[13] = _v(imu_data, mag_channels, 1, i)
+                    v[14] = _v(imu_data, mag_channels, 2, i)
+                    file.write(",".join(str(x) for x in v) + "\n")
 
-                # Write one CSV row per device sample so no data is discarded.
-                # data shape: (num_channels, num_samples); each column is one sample.
-                for i in range(data.shape[1]):
-                    # Prefer the board's own hardware timestamp when available.
-                    if timestamp_channel is not None:
-                        timestamp = data[timestamp_channel, i]
-                    else:
-                        timestamp = time.time()
+                # --- PPG rows (red / IR / green) ---
+                for i in range(ppg_data.shape[1]):
+                    v = [""] * 15
+                    v[0] = _ts(ppg_data, ppg_ts_channel, i)
+                    v[1] = _v(ppg_data, ppg_channels, 0, i)
+                    v[2] = _v(ppg_data, ppg_channels, 1, i)
+                    v[3] = _v(ppg_data, ppg_channels, 2, i)
+                    file.write(",".join(str(x) for x in v) + "\n")
 
-                    row = (
-                        f"{timestamp},"
-                        f"{val(ppg_channels, 0, i)},{val(ppg_channels, 1, i)},{val(ppg_channels, 2, i)},"
-                        f"{val(eda_channels, 0, i)},"
-                        f"{val(temperature_channels, 0, i)},"
-                        f"{val(accel_channels, 0, i)},{val(accel_channels, 1, i)},{val(accel_channels, 2, i)},"
-                        f"{val(gyro_channels, 0, i)},{val(gyro_channels, 1, i)},{val(gyro_channels, 2, i)},"
-                        f"{val(mag_channels, 0, i)},{val(mag_channels, 1, i)},{val(mag_channels, 2, i)}"
-                    )
-                    file.write(row + "\n")
+                # --- Biometric rows (EDA / temperature) ---
+                for i in range(bio_data.shape[1]):
+                    v = [""] * 15
+                    v[0] = _ts(bio_data, bio_ts_channel, i)
+                    v[4] = _v(bio_data, eda_channels, 0, i)
+                    v[5] = _v(bio_data, temperature_channels, 0, i)
+                    file.write(",".join(str(x) for x in v) + "\n")
 
                 # Sleep for the remainder of the polling interval.
                 elapsed = time.time() - loop_start
