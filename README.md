@@ -7,6 +7,8 @@ https://github.com/MelecaZane/CITS3200
 - [*Polhemus Liberty* USB driver](https://ftp.polhemus1.com/pub/Trackers/Liberty/)
     - *Note:* This driver is **old** and not compatible with the *Core Isolation* feature of Windows 11. Please disable this feature to use *Polhemus* tracking.
 - [*SteamVR*](https://store.steampowered.com/app/250820/SteamVR/)
+- [*EmotiBit Software and Drivers*](https://github.com/EmotiBit/EmotiBit_Docs/blob/master/Getting_Started.md)
+    - Follow the *Getting Started* steps in the link to install both the *EmotiBit* software and drivers.
 
 ## Compatibility
 - Tested and working Windows 10 and Windows 11*
@@ -40,6 +42,8 @@ https://github.com/MelecaZane/CITS3200
 5. When ready, press `Stop` to halt tracking.
 6. Press `Save zip to...` to select a location for the zip file containing all the tracked data to be saved.
    - Ensure you do this before doing another tracking run, files may be overwritten otherwise!
+  
+*Note:* When using *EmotiBit* tracking, ensure the system is connected to the same network as the *EmotiBit* device itself and ensure you know the device's **IP address**.
 
 ## Data Interpretation
 For all tracker types, each row of output is a single "poll", each poll is labeled with its Unix timestamp (seconds since *00:00:00 UTC on 1 January 1970*).
@@ -70,3 +74,11 @@ For all tracker types, each row of output is a single "poll", each poll is label
 | M10 M11 M12 M13 |
 | M20 M21 M22 M23 |
 ```
+
+### EmotiBit
+- This tracker outputs three files, one for each of the following data sets:
+    - Accel/Gyro/Mag: Sampled at 25Hz
+    - PPG Red/IR/Green: Sampled at 25Hz (used to calculate heart-rate)
+    - EDA + Temperature: Sampled at 15Hz
+- The sampling rates listed above are set by the *EmotiBit* tracker itself. They will track at this rate regardless of the rate set in the program (other simultaneous trackers will still respect the set rate).
+- Setting a static IP address on your router for the *EmotiBit* may make life easier as it will prevent having to find out the dynamically-assigned IP address each use.
