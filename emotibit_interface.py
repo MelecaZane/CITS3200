@@ -77,16 +77,14 @@ def initialise_emotibit_with_callback(hz: int, ip_address: str = "", callback_fu
     bio_ts_channel       = bio_descr.get("timestamp_channel")
 
     try:
-        with open("emotibit_output.csv", "w") as file:
-            file.write(
-                "Timestamp,"
-                "PPG_Red,PPG_IR,PPG_Green,"
-                "EDA,"
-                "Temperature,"
-                "AccelX,AccelY,AccelZ,"
-                "GyroX,GyroY,GyroZ,"
-                "MagX,MagY,MagZ\n"
-            )
+        with (
+            open("emotibit_imu.csv", "w") as imu_file,
+            open("emotibit_ppg.csv", "w") as ppg_file,
+            open("emotibit_bio.csv", "w") as bio_file,
+        ):
+            imu_file.write("Timestamp,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ\n")
+            ppg_file.write("Timestamp,PPG_Red,PPG_IR,PPG_Green\n")
+            bio_file.write("Timestamp,EDA,Temperature\n")
 
             # Signal the main application that the board is ready.
             if callback_func:
@@ -107,11 +105,6 @@ def initialise_emotibit_with_callback(hz: int, ip_address: str = "", callback_fu
                     return matrix[channels[ch_idx], col_idx]
                 return ""
 
-            # CSV column layout (indices 0-14):
-            #  0:Timestamp  1:PPG_Red  2:PPG_IR  3:PPG_Green  4:EDA  5:Temperature
-            #  6:AccelX  7:AccelY  8:AccelZ  9:GyroX  10:GyroY  11:GyroZ
-            #  12:MagX  13:MagY  14:MagZ
-
             while another and not stop_event.is_set():
                 loop_start = time.time()
 
@@ -120,37 +113,40 @@ def initialise_emotibit_with_callback(hz: int, ip_address: str = "", callback_fu
                 ppg_data = board.get_board_data(preset=BrainFlowPresets.AUXILIARY_PRESET)
                 bio_data = board.get_board_data(preset=BrainFlowPresets.ANCILLARY_PRESET)
 
-                # --- IMU rows (accel / gyro / mag) ---
+                # --- emotibit_imu.csv (accel / gyro / mag) ---
                 for i in range(imu_data.shape[1]):
-                    v = [""] * 15
-                    v[0]  = _ts(imu_data, imu_ts_channel, i)
-                    v[6]  = _v(imu_data, accel_channels, 0, i)
-                    v[7]  = _v(imu_data, accel_channels, 1, i)
-                    v[8]  = _v(imu_data, accel_channels, 2, i)
-                    v[9]  = _v(imu_data, gyro_channels, 0, i)
-                    v[10] = _v(imu_data, gyro_channels, 1, i)
-                    v[11] = _v(imu_data, gyro_channels, 2, i)
-                    v[12] = _v(imu_data, mag_channels, 0, i)
-                    v[13] = _v(imu_data, mag_channels, 1, i)
-                    v[14] = _v(imu_data, mag_channels, 2, i)
-                    file.write(",".join(str(x) for x in v) + "\n")
+                    row = ",".join(str(x) for x in [
+                        _ts(imu_data, imu_ts_channel, i),
+                        _v(imu_data, accel_channels, 0, i),
+                        _v(imu_data, accel_channels, 1, i),
+                        _v(imu_data, accel_channels, 2, i),
+                        _v(imu_data, gyro_channels, 0, i),
+                        _v(imu_data, gyro_channels, 1, i),
+                        _v(imu_data, gyro_channels, 2, i),
+                        _v(imu_data, mag_channels, 0, i),
+                        _v(imu_data, mag_channels, 1, i),
+                        _v(imu_data, mag_channels, 2, i),
+                    ])
+                    imu_file.write(row + "\n")
 
-                # --- PPG rows (red / IR / green) ---
+                # --- emotibit_ppg.csv (PPG red / IR / green) ---
                 for i in range(ppg_data.shape[1]):
-                    v = [""] * 15
-                    v[0] = _ts(ppg_data, ppg_ts_channel, i)
-                    v[1] = _v(ppg_data, ppg_channels, 0, i)
-                    v[2] = _v(ppg_data, ppg_channels, 1, i)
-                    v[3] = _v(ppg_data, ppg_channels, 2, i)
-                    file.write(",".join(str(x) for x in v) + "\n")
+                    row = ",".join(str(x) for x in [
+                        _ts(ppg_data, ppg_ts_channel, i),
+                        _v(ppg_data, ppg_channels, 0, i),
+                        _v(ppg_data, ppg_channels, 1, i),
+                        _v(ppg_data, ppg_channels, 2, i),
+                    ])
+                    ppg_file.write(row + "\n")
 
-                # --- Biometric rows (EDA / temperature) ---
+                # --- emotibit_bio.csv (EDA / temperature) ---
                 for i in range(bio_data.shape[1]):
-                    v = [""] * 15
-                    v[0] = _ts(bio_data, bio_ts_channel, i)
-                    v[4] = _v(bio_data, eda_channels, 0, i)
-                    v[5] = _v(bio_data, temperature_channels, 0, i)
-                    file.write(",".join(str(x) for x in v) + "\n")
+                    row = ",".join(str(x) for x in [
+                        _ts(bio_data, bio_ts_channel, i),
+                        _v(bio_data, eda_channels, 0, i),
+                        _v(bio_data, temperature_channels, 0, i),
+                    ])
+                    bio_file.write(row + "\n")
 
                 # Sleep for the remainder of the polling interval.
                 elapsed = time.time() - loop_start
